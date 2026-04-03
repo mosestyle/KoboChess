@@ -1,0 +1,587 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>KoboChess Kobo</title>
+  <style>
+    :root{
+      --bg:#f4f4f4;
+      --fg:#111;
+      --light:#e8e8e8;
+      --dark:#bdbdbd;
+      --border:#222;
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0;
+      font-family:Arial,Helvetica,sans-serif;
+      background:var(--bg);
+      color:var(--fg);
+      display:flex;
+      justify-content:center;
+      padding:12px;
+    }
+    .wrap{
+      width:min(100%,700px);
+    }
+    h1{
+      margin:0 0 10px;
+      font-size:28px;
+      text-align:center;
+    }
+    .topbar,.actions{
+      display:grid;
+      gap:8px;
+      margin-bottom:10px;
+    }
+    .topbar{
+      grid-template-columns:1fr 1fr;
+    }
+    .actions{
+      grid-template-columns:1fr 1fr 1fr;
+    }
+    button,select{
+      width:100%;
+      min-height:48px;
+      font-size:18px;
+      border:2px solid var(--border);
+      border-radius:8px;
+      background:#fff;
+      color:#000;
+    }
+    .status{
+      border:2px solid var(--border);
+      background:#fff;
+      border-radius:8px;
+      padding:10px;
+      min-height:54px;
+      font-size:18px;
+      margin-bottom:10px;
+    }
+    .board{
+      display:grid;
+      grid-template-columns:repeat(8,1fr);
+      border:3px solid var(--border);
+      width:100%;
+      aspect-ratio:1/1;
+      background:#000;
+    }
+    .sq{
+      border:none;
+      margin:0;
+      padding:0;
+      font-size:min(7vw,38px);
+      line-height:1;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      user-select:none;
+      -webkit-user-select:none;
+      font-family:"Segoe UI Symbol","Noto Sans Symbols","Arial Unicode MS",serif;
+    }
+    .light{background:var(--light)}
+    .dark{background:var(--dark)}
+    .selected{
+      outline:4px solid #000;
+      outline-offset:-4px;
+    }
+    .hint{
+      box-shadow:inset 0 0 0 4px #444;
+    }
+    .legal{
+      box-shadow:inset 0 0 0 4px #777;
+    }
+    .small{
+      font-size:15px;
+      line-height:1.35;
+      margin-top:10px;
+      opacity:.85;
+    }
+    .footer{
+      margin-top:10px;
+      font-size:14px;
+      text-align:center;
+      opacity:.8;
+    }
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <h1>KoboChess</h1>
+
+  <div class="topbar">
+    <select id="difficulty">
+      <option value="1">Difficulty 1</option>
+      <option value="2">Difficulty 2</option>
+      <option value="3">Difficulty 3</option>
+      <option value="4">Difficulty 4</option>
+      <option value="5" selected>Difficulty 5</option>
+      <option value="6">Difficulty 6</option>
+      <option value="7">Difficulty 7</option>
+      <option value="8">Difficulty 8</option>
+      <option value="9">Difficulty 9</option>
+    </select>
+    <select id="sideSelect">
+      <option value="w" selected>Play as White</option>
+      <option value="b">Play as Black</option>
+    </select>
+  </div>
+
+  <div class="actions">
+    <button id="newGameBtn">New Game</button>
+    <button id="undoBtn">Undo</button>
+    <button id="hintBtn">Hint</button>
+  </div>
+
+  <div id="status" class="status">Loading Kobo build...</div>
+  <div id="board" class="board"></div>
+
+  <div class="small">
+    Tap a piece, then tap where you want it to go. Promotion is auto-queen for now.<br>
+    Your game auto-saves.
+  </div>
+  <div class="footer">Kobo Clara BW build • kobo.html v1</div>
+</div>
+
+<script src="lib/chess.min.js"></script>
+<script>
+(function () {
+  var boardEl = document.getElementById("board");
+  var statusEl = document.getElementById("status");
+  var undoBtn = document.getElementById("undoBtn");
+  var hintBtn = document.getElementById("hintBtn");
+  var newGameBtn = document.getElementById("newGameBtn");
+  var difficultyEl = document.getElementById("difficulty");
+  var sideSelectEl = document.getElementById("sideSelect");
+
+  var PIECES = {
+    wp:"♙", wn:"♘", wb:"♗", wr:"♖", wq:"♕", wk:"♔",
+    bp:"♟", bn:"♞", bb:"♝", br:"♜", bq:"♛", bk:"♚"
+  };
+
+  var FILES = ["a","b","c","d","e","f","g","h"];
+
+  var game = new Chess();
+  var selected = null;
+  var legalTargets = [];
+  var hintSquares = [];
+  var flipped = false;
+  var playerColor = "w";
+  var botBusy = false;
+
+  function botColor() {
+    return playerColor === "w" ? "b" : "w";
+  }
+
+  function saveState() {
+    var data = {
+      moves: game.history(),
+      playerColor: playerColor,
+      difficulty: difficultyEl.value
+    };
+    localStorage.setItem("koboChessState_kobohtml", JSON.stringify(data));
+  }
+
+  function loadState() {
+    try {
+      var raw = localStorage.getItem("koboChessState_kobohtml");
+      if (!raw) return false;
+
+      var data = JSON.parse(raw);
+
+      playerColor = data.playerColor || "w";
+      sideSelectEl.value = playerColor;
+      difficultyEl.value = data.difficulty || "5";
+
+      game = new Chess();
+      var moves = data.moves || [];
+      for (var i = 0; i < moves.length; i++) {
+        game.move(moves[i]);
+      }
+
+      selected = null;
+      legalTargets = [];
+      hintSquares = [];
+      botBusy = false;
+      flipped = playerColor === "b";
+
+      renderBoard();
+      updateStatus();
+      return true;
+    } catch (err) {
+      console.log(err);
+      return false;
+    }
+  }
+
+  function squareColor(fileIndex, rankIndex) {
+    return ((fileIndex + rankIndex) % 2 === 0) ? "light" : "dark";
+  }
+
+  function getOrderedRanks() {
+    return flipped ? [1,2,3,4,5,6,7,8] : [8,7,6,5,4,3,2,1];
+  }
+
+  function getOrderedFiles() {
+    if (!flipped) return FILES.slice(0);
+    return FILES.slice(0).reverse();
+  }
+
+  function pieceAt(square) {
+    var piece = game.get(square);
+    if (!piece) return "";
+    return PIECES[piece.color + piece.type] || "";
+  }
+
+  function renderBoard() {
+    boardEl.innerHTML = "";
+    var files = getOrderedFiles();
+    var ranks = getOrderedRanks();
+
+    for (var r = 0; r < ranks.length; r++) {
+      for (var f = 0; f < files.length; f++) {
+        var square = files[f] + ranks[r];
+        var btn = document.createElement("button");
+        btn.className = "sq " + squareColor(f, r);
+
+        if (selected === square) btn.className += " selected";
+        if (legalTargets.indexOf(square) !== -1) btn.className += " legal";
+        if (hintSquares.indexOf(square) !== -1) btn.className += " hint";
+
+        btn.setAttribute("data-square", square);
+        btn.textContent = pieceAt(square);
+        btn.addEventListener("click", onSquareClick);
+        boardEl.appendChild(btn);
+      }
+    }
+  }
+
+  function updateStatus(extra) {
+    if (extra) {
+      statusEl.textContent = extra;
+      return;
+    }
+
+    if (game.in_checkmate()) {
+      statusEl.textContent = "Checkmate. " + (game.turn() === "w" ? "Black" : "White") + " wins.";
+      return;
+    }
+
+    if (game.in_draw()) {
+      statusEl.textContent = "Draw.";
+      return;
+    }
+
+    if (botBusy) {
+      statusEl.textContent = "Bot is thinking...";
+      return;
+    }
+
+    if (game.turn() === playerColor) {
+      statusEl.textContent = "Your move (" + (playerColor === "w" ? "White" : "Black") + ")." +
+        (game.in_check() ? " Check." : "");
+    } else {
+      statusEl.textContent = "Bot to move." + (game.in_check() ? " Check." : "");
+    }
+  }
+
+  function evaluateBoard(aiColor) {
+    if (game.in_checkmate()) {
+      if (game.turn() === aiColor) return -99999;
+      return 99999;
+    }
+
+    if (game.in_draw()) return 0;
+
+    var values = {
+      p:100,
+      n:320,
+      b:330,
+      r:500,
+      q:900,
+      k:20000
+    };
+
+    var score = 0;
+
+    for (var fi = 0; fi < FILES.length; fi++) {
+      for (var rank = 1; rank <= 8; rank++) {
+        var sq = FILES[fi] + rank;
+        var piece = game.get(sq);
+        if (!piece) continue;
+
+        var value = values[piece.type] || 0;
+
+        if (piece.type === "p") {
+          if (piece.color === "w") value += rank * 5;
+          else value += (9 - rank) * 5;
+        }
+
+        if (piece.type === "n" || piece.type === "b") {
+          if (sq === "d4" || sq === "e4" || sq === "d5" || sq === "e5") value += 15;
+        }
+
+        if (piece.color === aiColor) score += value;
+        else score -= value;
+      }
+    }
+
+    return score;
+  }
+
+  function minimax(depth, alpha, beta, aiColor) {
+    if (depth === 0 || game.game_over()) {
+      return evaluateBoard(aiColor);
+    }
+
+    var moves = game.moves();
+    var maximizing = (game.turn() === aiColor);
+    var i, value, best;
+
+    if (maximizing) {
+      best = -999999;
+      for (i = 0; i < moves.length; i++) {
+        game.move(moves[i]);
+        value = minimax(depth - 1, alpha, beta, aiColor);
+        game.undo();
+
+        if (value > best) best = value;
+        if (best > alpha) alpha = best;
+        if (beta <= alpha) break;
+      }
+      return best;
+    } else {
+      best = 999999;
+      for (i = 0; i < moves.length; i++) {
+        game.move(moves[i]);
+        value = minimax(depth - 1, alpha, beta, aiColor);
+        game.undo();
+
+        if (value < best) best = value;
+        if (best < beta) beta = best;
+        if (beta <= alpha) break;
+      }
+      return best;
+    }
+  }
+
+  function sortMovesDescending(a, b) {
+    return b.score - a.score;
+  }
+
+  function chooseMoveForColor(aiColor, level) {
+    var moves = game.moves();
+    if (!moves.length) return null;
+
+    if (level === 1) {
+      return moves[Math.floor(Math.random() * moves.length)];
+    }
+
+    var depth = (level >= 5) ? 2 : 1;
+    var scored = [];
+    var i, move, score;
+
+    for (i = 0; i < moves.length; i++) {
+      move = moves[i];
+      game.move(move);
+      score = minimax(depth - 1, -999999, 999999, aiColor);
+      game.undo();
+      scored.push({ move: move, score: score });
+    }
+
+    scored.sort(sortMovesDescending);
+
+    if (level === 2) {
+      return scored[Math.floor(Math.random() * Math.min(8, scored.length))].move;
+    }
+    if (level === 3) {
+      return scored[Math.floor(Math.random() * Math.min(5, scored.length))].move;
+    }
+    if (level === 4) {
+      return scored[0].move;
+    }
+    if (level === 5) {
+      return scored[Math.floor(Math.random() * Math.min(4, scored.length))].move;
+    }
+    if (level === 6) {
+      return scored[Math.floor(Math.random() * Math.min(2, scored.length))].move;
+    }
+
+    return scored[0].move;
+  }
+
+  function requestBotMove() {
+    if (botBusy) return;
+    if (game.game_over()) return;
+
+    botBusy = true;
+    updateStatus("Bot is thinking...");
+
+    setTimeout(function () {
+      var level = Number(difficultyEl.value);
+      var move = chooseMoveForColor(botColor(), level);
+
+      if (move) {
+        game.move(move);
+      }
+
+      botBusy = false;
+      hintSquares = [];
+      renderBoard();
+      updateStatus();
+      saveState();
+    }, 50);
+  }
+
+  function requestHint() {
+    if (botBusy) return;
+    if (game.game_over()) return;
+    if (game.turn() !== playerColor) return;
+
+    updateStatus("Finding best move...");
+
+    setTimeout(function () {
+      var move = chooseMoveForColor(playerColor, 6);
+
+      if (!move) {
+        updateStatus();
+        return;
+      }
+
+      var verboseMoves = game.moves({ verbose: true });
+      var i;
+      for (i = 0; i < verboseMoves.length; i++) {
+        if (verboseMoves[i].san === move) {
+          hintSquares = [verboseMoves[i].from, verboseMoves[i].to];
+          break;
+        }
+      }
+
+      renderBoard();
+      updateStatus("Hint: " + move);
+    }, 50);
+  }
+
+  function onSquareClick(e) {
+    if (botBusy) return;
+    if (game.turn() !== playerColor) return;
+
+    var square = e.currentTarget.getAttribute("data-square");
+    hintSquares = [];
+
+    if (!selected) {
+      var piece = game.get(square);
+      if (!piece) return;
+      if (piece.color !== playerColor) return;
+
+      selected = square;
+      var moves = game.moves({ square: square, verbose: true });
+      legalTargets = [];
+      for (var i = 0; i < moves.length; i++) {
+        legalTargets.push(moves[i].to);
+      }
+      renderBoard();
+      updateStatus("Selected " + square);
+      return;
+    }
+
+    if (selected === square) {
+      selected = null;
+      legalTargets = [];
+      renderBoard();
+      updateStatus();
+      return;
+    }
+
+    var move = game.move({
+      from: selected,
+      to: square,
+      promotion: "q"
+    });
+
+    if (!move) {
+      var piece2 = game.get(square);
+      if (piece2 && piece2.color === playerColor) {
+        selected = square;
+        var moves2 = game.moves({ square: square, verbose: true });
+        legalTargets = [];
+        for (var j = 0; j < moves2.length; j++) {
+          legalTargets.push(moves2[j].to);
+        }
+        renderBoard();
+        updateStatus("Selected " + square);
+      } else {
+        selected = null;
+        legalTargets = [];
+        renderBoard();
+        updateStatus("Illegal move");
+      }
+      return;
+    }
+
+    selected = null;
+    legalTargets = [];
+    renderBoard();
+    updateStatus();
+    saveState();
+
+    if (!game.game_over() && game.turn() === botColor()) {
+      requestBotMove();
+    }
+  }
+
+  function startGame() {
+    game = new Chess();
+    selected = null;
+    legalTargets = [];
+    hintSquares = [];
+    botBusy = false;
+    playerColor = sideSelectEl.value;
+    flipped = playerColor === "b";
+
+    renderBoard();
+    updateStatus();
+    saveState();
+
+    if (playerColor === "b") {
+      requestBotMove();
+    }
+  }
+
+  undoBtn.addEventListener("click", function () {
+    if (botBusy) return;
+
+    var moveCount = game.history().length;
+    if (moveCount >= 2) {
+      game.undo();
+      game.undo();
+    } else if (moveCount === 1) {
+      game.undo();
+    }
+
+    selected = null;
+    legalTargets = [];
+    hintSquares = [];
+    renderBoard();
+    updateStatus();
+    saveState();
+  });
+
+  hintBtn.addEventListener("click", function () {
+    selected = null;
+    legalTargets = [];
+    renderBoard();
+    requestHint();
+  });
+
+  newGameBtn.addEventListener("click", startGame);
+  sideSelectEl.addEventListener("change", startGame);
+
+  if (!loadState()) {
+    startGame();
+  }
+})();
+</script>
+</body>
+</html>
