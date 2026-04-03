@@ -66,10 +66,18 @@
       margin:0;
       text-align:center;
       vertical-align:middle;
-      font-size:34px;
-      line-height:1;
-      font-family:"DejaVu Sans","Segoe UI Symbol","Noto Sans Symbols","Arial Unicode MS",serif;
       border:none;
+      overflow:hidden;
+    }
+    #boardTable img{
+      display:block;
+      width:90%;
+      height:90%;
+      margin:0 auto;
+      object-fit:contain;
+      pointer-events:none;
+      user-select:none;
+      -webkit-user-select:none;
     }
     .light{
       background:#e8e8e8;
@@ -102,6 +110,9 @@
     .clear{
       clear:both;
     }
+    #menuWrap{
+      margin-bottom:10px;
+    }
   </style>
 </head>
 <body>
@@ -109,43 +120,49 @@
   <h1>KoboChess</h1>
 
   <div class="row">
-    <div class="half">
-      <select id="difficulty">
-        <option value="1">Difficulty 1</option>
-        <option value="2">Difficulty 2</option>
-        <option value="3">Difficulty 3</option>
-        <option value="4">Difficulty 4</option>
-        <option value="5" selected>Difficulty 5</option>
-        <option value="6">Difficulty 6</option>
-        <option value="7">Difficulty 7</option>
-        <option value="8">Difficulty 8</option>
-        <option value="9">Difficulty 9</option>
-      </select>
-    </div>
-    <div class="half right">
-      <select id="sideSelect">
-        <option value="w" selected>Play as White</option>
-        <option value="b">Play as Black</option>
-      </select>
-    </div>
-    <div class="clear"></div>
+    <button id="toggleMenuBtn">Hide Menu</button>
   </div>
 
-  <div class="row">
-    <div class="half">
-      <button id="newGameBtn">New Game</button>
+  <div id="menuWrap">
+    <div class="row">
+      <div class="half">
+        <select id="difficulty">
+          <option value="1">Difficulty 1</option>
+          <option value="2">Difficulty 2</option>
+          <option value="3">Difficulty 3</option>
+          <option value="4">Difficulty 4</option>
+          <option value="5" selected>Difficulty 5</option>
+          <option value="6">Difficulty 6</option>
+          <option value="7">Difficulty 7</option>
+          <option value="8">Difficulty 8</option>
+          <option value="9">Difficulty 9</option>
+        </select>
+      </div>
+      <div class="half right">
+        <select id="sideSelect">
+          <option value="w" selected>Play as White</option>
+          <option value="b">Play as Black</option>
+        </select>
+      </div>
+      <div class="clear"></div>
     </div>
-    <div class="half right">
-      <button id="undoBtn">Undo</button>
+
+    <div class="row">
+      <div class="half">
+        <button id="newGameBtn">New Game</button>
+      </div>
+      <div class="half right">
+        <button id="undoBtn">Undo</button>
+      </div>
+      <div class="clear"></div>
     </div>
-    <div class="clear"></div>
-  </div>
 
-  <div class="row">
-    <button id="hintBtn">Hint</button>
-  </div>
+    <div class="row">
+      <button id="hintBtn">Hint</button>
+    </div>
 
-  <div id="status" class="status">Loading Kobo table build...</div>
+    <div id="status" class="status">Loading Kobo image build...</div>
+  </div>
 
   <div id="boardWrap">
     <table id="boardTable"></table>
@@ -155,7 +172,7 @@
     Tap a piece, then tap where you want it to go. Promotion is auto-queen for now.<br>
     Your game auto-saves.
   </div>
-  <div class="footer">Kobo Clara BW build • kobo.html v2</div>
+  <div class="footer">Kobo Clara BW build • kobo.html v3</div>
 </div>
 
 <script src="lib/chess.min.js"></script>
@@ -169,10 +186,12 @@
   var newGameBtn = document.getElementById("newGameBtn");
   var difficultyEl = document.getElementById("difficulty");
   var sideSelectEl = document.getElementById("sideSelect");
+  var toggleMenuBtn = document.getElementById("toggleMenuBtn");
+  var menuWrap = document.getElementById("menuWrap");
 
-  var PIECES = {
-    wp:"♙", wn:"♘", wb:"♗", wr:"♖", wq:"♕", wk:"♔",
-    bp:"♟", bn:"♞", bb:"♝", br:"♜", bq:"♛", bk:"♚"
+  var PIECE_FILES = {
+    wp:"wP.png", wn:"wN.png", wb:"wB.png", wr:"wR.png", wq:"wQ.png", wk:"wK.png",
+    bp:"bP.png", bn:"bN.png", bb:"bB.png", br:"bR.png", bq:"bQ.png", bk:"bK.png"
   };
 
   var FILES = ["a","b","c","d","e","f","g","h"];
@@ -184,6 +203,7 @@
   var flipped = false;
   var playerColor = "w";
   var botBusy = false;
+  var menuVisible = true;
 
   function botColor() {
     return playerColor === "w" ? "b" : "w";
@@ -193,14 +213,15 @@
     var data = {
       moves: game.history(),
       playerColor: playerColor,
-      difficulty: difficultyEl.value
+      difficulty: difficultyEl.value,
+      menuVisible: menuVisible
     };
-    localStorage.setItem("koboChessState_kobohtml_v2", JSON.stringify(data));
+    localStorage.setItem("koboChessState_kobohtml_v3", JSON.stringify(data));
   }
 
   function loadState() {
     try {
-      var raw = localStorage.getItem("koboChessState_kobohtml_v2");
+      var raw = localStorage.getItem("koboChessState_kobohtml_v3");
       if (!raw) return false;
 
       var data = JSON.parse(raw);
@@ -208,6 +229,11 @@
       playerColor = data.playerColor || "w";
       sideSelectEl.value = playerColor;
       difficultyEl.value = data.difficulty || "5";
+
+      if (typeof data.menuVisible !== "undefined") {
+        menuVisible = data.menuVisible;
+        applyMenuVisibility();
+      }
 
       game = new Chess();
       var moves = data.moves || [];
@@ -229,6 +255,11 @@
     }
   }
 
+  function applyMenuVisibility() {
+    menuWrap.style.display = menuVisible ? "block" : "none";
+    toggleMenuBtn.textContent = menuVisible ? "Hide Menu" : "Show Menu";
+  }
+
   function getOrderedRanks() {
     return flipped ? [1,2,3,4,5,6,7,8] : [8,7,6,5,4,3,2,1];
   }
@@ -238,10 +269,12 @@
     return FILES.slice(0).reverse();
   }
 
-  function pieceAt(square) {
+  function pieceImgHtml(square) {
     var piece = game.get(square);
-    if (!piece) return "";
-    return PIECES[piece.color + piece.type] || "";
+    if (!piece) return "&nbsp;";
+    var key = piece.color + piece.type;
+    var file = PIECE_FILES[key];
+    return '<img src="pieces/wikipedia/' + file + '" alt="' + key + '">';
   }
 
   function isLightSquare(fileIndex, rankIndex) {
@@ -273,7 +306,7 @@
         if (legalTargets.indexOf(square) !== -1) cls += " legal";
         if (hintSquares.indexOf(square) !== -1) cls += " hint";
 
-        html += '<td class="' + cls + '" data-square="' + square + '">' + pieceAt(square) + '</td>';
+        html += '<td class="' + cls + '" data-square="' + square + '">' + pieceImgHtml(square) + '</td>';
       }
       html += "</tr>";
     }
@@ -609,7 +642,16 @@
   newGameBtn.onclick = startGame;
   sideSelectEl.onchange = startGame;
 
+  toggleMenuBtn.onclick = function () {
+    menuVisible = !menuVisible;
+    applyMenuVisibility();
+    saveState();
+    resizeBoardCells();
+  };
+
   window.onresize = resizeBoardCells;
+
+  applyMenuVisibility();
 
   if (!loadState()) {
     startGame();
