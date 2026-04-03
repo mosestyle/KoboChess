@@ -170,7 +170,7 @@
 
   let engine = null;
   try {
-    engine = new Worker("https://cdn.jsdelivr.net/npm/stockfish.wasm@0.10.0/stockfish.worker.js");
+    engine = new Worker("engine/stockfish.worker.js");
   } catch (e) {
     console.error(e);
   }
