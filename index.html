@@ -132,7 +132,7 @@
     <button id="hintBtn">Hint</button>
   </div>
 
-  <div id="status" class="status">Loading…</div>
+  <div id="status" class="status">Loading...</div>
   <div id="board" class="board"></div>
 
   <div class="small">
@@ -142,89 +142,40 @@
   <div class="footer">Kobo Clara BW test version</div>
 </div>
 
-<script type="module">
-  import { Chess } from "https://esm.sh/chess.js@1.4.0";
+<script src="lib/chess.min.js"></script>
+<script>
+(function () {
+  var boardEl = document.getElementById("board");
+  var statusEl = document.getElementById("status");
+  var undoBtn = document.getElementById("undoBtn");
+  var hintBtn = document.getElementById("hintBtn");
+  var newGameBtn = document.getElementById("newGameBtn");
+  var difficultyEl = document.getElementById("difficulty");
+  var sideSelectEl = document.getElementById("sideSelect");
 
-  const boardEl = document.getElementById("board");
-  const statusEl = document.getElementById("status");
-  const undoBtn = document.getElementById("undoBtn");
-  const hintBtn = document.getElementById("hintBtn");
-  const newGameBtn = document.getElementById("newGameBtn");
-  const difficultyEl = document.getElementById("difficulty");
-  const sideSelectEl = document.getElementById("sideSelect");
-
-  const PIECES = {
+  var PIECES = {
     wp:"♙", wn:"♘", wb:"♗", wr:"♖", wq:"♕", wk:"♔",
     bp:"♟", bn:"♞", bb:"♝", br:"♜", bq:"♛", bk:"♚"
   };
 
-  const FILES = ["a","b","c","d","e","f","g","h"];
+  var FILES = ["a","b","c","d","e","f","g","h"];
 
-  let game = new Chess();
-  let selected = null;
-  let legalTargets = [];
-  let hintSquares = [];
-  let flipped = false;
-  let playerColor = "w";
-  let engineBusy = false;
-  let pendingMode = null;
+  var game = new Chess();
+  var selected = null;
+  var legalTargets = [];
+  var hintSquares = [];
+  var flipped = false;
+  var playerColor = "w";
+  var engineBusy = false;
+  var pendingMode = null;
+  var engine = null;
 
-  let engine = null;
-  try {
-    engine = new Worker("engine/stockfish-18-lite-single.js");
-  } catch (e) {
-    console.error(e);
-  }
-
-  if (engine) {
-    engine.onmessage = (e) => {
-      const line = typeof e.data === "string" ? e.data : "";
-      console.log("ENGINE:", line);
-
-      if (!line) return;
-
-      if (line.startsWith("bestmove")) {
-        const parts = line.trim().split(/\s+/);
-        const move = parts[1];
-
-        if (!move || move === "(none)") {
-          engineBusy = false;
-          pendingMode = null;
-          updateStatus();
-          return;
-        }
-
-        const from = move.slice(0,2);
-        const to = move.slice(2,4);
-
-        if (pendingMode === "hint") {
-          hintSquares = [from, to];
-          engineBusy = false;
-          pendingMode = null;
-          renderBoard();
-          updateStatus("Hint: " + from + " → " + to);
-          return;
-        }
-
-        if (pendingMode === "move") {
-          game.move({ from, to, promotion: "q" });
-          engineBusy = false;
-          pendingMode = null;
-          hintSquares = [];
-          renderBoard();
-          updateStatus();
-          saveState();
-        }
-      }
-    };
-
-    engine.postMessage("uci");
-    engine.postMessage("isready");
-    engine.postMessage("ucinewgame");
+  function botColor() {
+    return playerColor === "w" ? "b" : "w";
   }
 
   function difficultyMap(level) {
-    const map = {
+    var map = {
       1:{skill:0,time:80},
       2:{skill:2,time:120},
       3:{skill:4,time:180},
@@ -238,14 +189,10 @@
     return map[level] || map[5];
   }
 
-  function botColor() {
-    return playerColor === "w" ? "b" : "w";
-  }
-
   function saveState() {
-    const data = {
+    var data = {
       moves: game.history(),
-      playerColor,
+      playerColor: playerColor,
       difficulty: difficultyEl.value
     };
     localStorage.setItem("koboChessState", JSON.stringify(data));
@@ -253,18 +200,19 @@
 
   function loadState() {
     try {
-      const raw = localStorage.getItem("koboChessState");
+      var raw = localStorage.getItem("koboChessState");
       if (!raw) return false;
 
-      const data = JSON.parse(raw);
+      var data = JSON.parse(raw);
 
       playerColor = data.playerColor || "w";
       sideSelectEl.value = playerColor;
       difficultyEl.value = data.difficulty || "5";
 
       game = new Chess();
-      for (const move of (data.moves || [])) {
-        game.move(move);
+      var moves = data.moves || [];
+      for (var i = 0; i < moves.length; i++) {
+        game.move(moves[i]);
       }
 
       selected = null;
@@ -278,13 +226,13 @@
       updateStatus();
       return true;
     } catch (err) {
-      console.error(err);
+      console.log(err);
       return false;
     }
   }
 
   function squareColor(fileIndex, rankIndex) {
-    return (fileIndex + rankIndex) % 2 === 0 ? "light" : "dark";
+    return ((fileIndex + rankIndex) % 2 === 0) ? "light" : "dark";
   }
 
   function getOrderedRanks() {
@@ -292,29 +240,32 @@
   }
 
   function getOrderedFiles() {
-    return flipped ? [...FILES].reverse() : FILES;
+    if (!flipped) return FILES.slice(0);
+    return FILES.slice(0).reverse();
   }
 
   function pieceAt(square) {
-    const piece = game.get(square);
+    var piece = game.get(square);
     if (!piece) return "";
     return PIECES[piece.color + piece.type] || "";
   }
 
   function renderBoard() {
     boardEl.innerHTML = "";
-    const files = getOrderedFiles();
-    const ranks = getOrderedRanks();
+    var files = getOrderedFiles();
+    var ranks = getOrderedRanks();
 
-    for (let r = 0; r < ranks.length; r++) {
-      for (let f = 0; f < files.length; f++) {
-        const square = files[f] + ranks[r];
-        const btn = document.createElement("button");
+    for (var r = 0; r < ranks.length; r++) {
+      for (var f = 0; f < files.length; f++) {
+        var square = files[f] + ranks[r];
+        var btn = document.createElement("button");
         btn.className = "sq " + squareColor(f, r);
-        if (selected === square) btn.classList.add("selected");
-        if (legalTargets.includes(square)) btn.classList.add("legal");
-        if (hintSquares.includes(square)) btn.classList.add("hint");
-        btn.dataset.square = square;
+
+        if (selected === square) btn.className += " selected";
+        if (legalTargets.indexOf(square) !== -1) btn.className += " legal";
+        if (hintSquares.indexOf(square) !== -1) btn.className += " hint";
+
+        btn.setAttribute("data-square", square);
         btn.textContent = pieceAt(square);
         btn.addEventListener("click", onSquareClick);
         boardEl.appendChild(btn);
@@ -322,20 +273,90 @@
     }
   }
 
+  function updateStatus(extra) {
+    if (extra) {
+      statusEl.textContent = extra;
+      return;
+    }
+
+    if (typeof game.in_checkmate === "function" && game.in_checkmate()) {
+      statusEl.textContent = "Checkmate. " + (game.turn() === "w" ? "Black" : "White") + " wins.";
+      return;
+    }
+
+    if (typeof game.in_draw === "function" && game.in_draw()) {
+      statusEl.textContent = "Draw.";
+      return;
+    }
+
+    if (engineBusy && pendingMode === "move") {
+      statusEl.textContent = "Bot is thinking...";
+      return;
+    }
+
+    if (game.turn() === playerColor) {
+      statusEl.textContent = "Your move (" + (playerColor === "w" ? "White" : "Black") + ")." +
+        ((typeof game.in_check === "function" && game.in_check()) ? " Check." : "");
+    } else {
+      statusEl.textContent = "Bot to move." +
+        ((typeof game.in_check === "function" && game.in_check()) ? " Check." : "");
+    }
+  }
+
+  function requestEngineMove() {
+    if (!engine) {
+      updateStatus("Engine failed to load.");
+      return;
+    }
+
+    engineBusy = true;
+    pendingMode = "move";
+
+    var cfg = difficultyMap(Number(difficultyEl.value));
+    engine.postMessage("setoption name Skill Level value " + cfg.skill);
+    engine.postMessage("position fen " + game.fen());
+    engine.postMessage("go movetime " + cfg.time);
+
+    updateStatus("Bot is thinking...");
+  }
+
+  function requestHint() {
+    if (engineBusy) return;
+    if (typeof game.game_over === "function" && game.game_over()) return;
+    if (game.turn() !== playerColor) return;
+    if (!engine) {
+      updateStatus("Engine failed to load.");
+      return;
+    }
+
+    engineBusy = true;
+    pendingMode = "hint";
+
+    engine.postMessage("setoption name Skill Level value 20");
+    engine.postMessage("position fen " + game.fen());
+    engine.postMessage("go movetime 400");
+
+    updateStatus("Finding best move...");
+  }
+
   function onSquareClick(e) {
     if (engineBusy) return;
     if (game.turn() !== playerColor) return;
 
-    const square = e.currentTarget.dataset.square;
+    var square = e.currentTarget.getAttribute("data-square");
     hintSquares = [];
 
     if (!selected) {
-      const piece = game.get(square);
+      var piece = game.get(square);
       if (!piece) return;
       if (piece.color !== playerColor) return;
 
       selected = square;
-      legalTargets = game.moves({ square, verbose: true }).map(m => m.to);
+      var moves = game.moves({ square: square, verbose: true });
+      legalTargets = [];
+      for (var i = 0; i < moves.length; i++) {
+        legalTargets.push(moves[i].to);
+      }
       renderBoard();
       updateStatus("Selected " + square);
       return;
@@ -349,17 +370,21 @@
       return;
     }
 
-    const move = game.move({
+    var move = game.move({
       from: selected,
       to: square,
       promotion: "q"
     });
 
     if (!move) {
-      const piece = game.get(square);
-      if (piece && piece.color === playerColor) {
+      var piece2 = game.get(square);
+      if (piece2 && piece2.color === playerColor) {
         selected = square;
-        legalTargets = game.moves({ square, verbose: true }).map(m => m.to);
+        var moves2 = game.moves({ square: square, verbose: true });
+        legalTargets = [];
+        for (var j = 0; j < moves2.length; j++) {
+          legalTargets.push(moves2[j].to);
+        }
         renderBoard();
         updateStatus("Selected " + square);
       } else {
@@ -377,70 +402,8 @@
     updateStatus();
     saveState();
 
-    if (!game.isGameOver() && game.turn() === botColor()) {
+    if (!(typeof game.game_over === "function" && game.game_over()) && game.turn() === botColor()) {
       requestEngineMove();
-    }
-  }
-
-  function requestEngineMove() {
-    if (!engine) {
-      updateStatus("Engine failed to load.");
-      return;
-    }
-
-    engineBusy = true;
-    pendingMode = "move";
-    const level = Number(difficultyEl.value);
-    const cfg = difficultyMap(level);
-
-    engine.postMessage("setoption name Skill Level value " + cfg.skill);
-    engine.postMessage("position fen " + game.fen());
-    engine.postMessage("go movetime " + cfg.time);
-    updateStatus("Bot is thinking...");
-  }
-
-  function requestHint() {
-    if (engineBusy || game.isGameOver()) return;
-    if (game.turn() !== playerColor) return;
-    if (!engine) {
-      updateStatus("Engine failed to load.");
-      return;
-    }
-
-    engineBusy = true;
-    pendingMode = "hint";
-    engine.postMessage("setoption name Skill Level value 20");
-    engine.postMessage("position fen " + game.fen());
-    engine.postMessage("go movetime 400");
-    updateStatus("Finding best move...");
-  }
-
-  function updateStatus(extra = "") {
-    if (extra) {
-      statusEl.textContent = extra;
-      return;
-    }
-
-    if (game.isCheckmate()) {
-      const winner = game.turn() === "w" ? "Black" : "White";
-      statusEl.textContent = "Checkmate. " + winner + " wins.";
-      return;
-    }
-
-    if (game.isDraw()) {
-      statusEl.textContent = "Draw.";
-      return;
-    }
-
-    if (engineBusy && pendingMode === "move") {
-      statusEl.textContent = "Bot is thinking...";
-      return;
-    }
-
-    if (game.turn() === playerColor) {
-      statusEl.textContent = "Your move (" + (playerColor === "w" ? "White" : "Black") + ")." + (game.inCheck() ? " Check." : "");
-    } else {
-      statusEl.textContent = "Bot to move." + (game.inCheck() ? " Check." : "");
     }
   }
 
@@ -465,10 +428,76 @@
     }
   }
 
-  undoBtn.addEventListener("click", () => {
+  function initEngine() {
+    try {
+      engine = new Worker("engine/stockfish-18-lite-single.js");
+    } catch (err) {
+      console.log(err);
+      engine = null;
+    }
+
+    if (!engine) {
+      updateStatus("Engine failed to load.");
+      return;
+    }
+
+    engine.onmessage = function (e) {
+      var line = (typeof e.data === "string") ? e.data : "";
+      console.log("ENGINE:", line);
+
+      if (!line) return;
+
+      if (line.indexOf("bestmove") === 0) {
+        var parts = line.replace(/\s+/g, " ").split(" ");
+        var move = parts[1];
+
+        if (!move || move === "(none)") {
+          engineBusy = false;
+          pendingMode = null;
+          updateStatus();
+          return;
+        }
+
+        var from = move.slice(0,2);
+        var to = move.slice(2,4);
+
+        if (pendingMode === "hint") {
+          hintSquares = [from, to];
+          engineBusy = false;
+          pendingMode = null;
+          renderBoard();
+          updateStatus("Hint: " + from + " → " + to);
+          return;
+        }
+
+        if (pendingMode === "move") {
+          game.move({ from: from, to: to, promotion: "q" });
+          engineBusy = false;
+          pendingMode = null;
+          hintSquares = [];
+          renderBoard();
+          updateStatus();
+          saveState();
+        }
+      }
+    };
+
+    engine.onerror = function (err) {
+      console.log("ENGINE ERROR:", err);
+      engineBusy = false;
+      pendingMode = null;
+      updateStatus("Engine error.");
+    };
+
+    engine.postMessage("uci");
+    engine.postMessage("isready");
+    engine.postMessage("ucinewgame");
+  }
+
+  undoBtn.addEventListener("click", function () {
     if (engineBusy) return;
 
-    const moveCount = game.history().length;
+    var moveCount = game.history().length;
     if (moveCount >= 2) {
       game.undo();
       game.undo();
@@ -484,7 +513,7 @@
     saveState();
   });
 
-  hintBtn.addEventListener("click", () => {
+  hintBtn.addEventListener("click", function () {
     selected = null;
     legalTargets = [];
     renderBoard();
@@ -494,9 +523,12 @@
   newGameBtn.addEventListener("click", startGame);
   sideSelectEl.addEventListener("change", startGame);
 
+  initEngine();
+
   if (!loadState()) {
     startGame();
   }
+})();
 </script>
 </body>
 </html>
