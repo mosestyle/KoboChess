@@ -177,10 +177,12 @@
 
   if (engine) {
     engine.onmessage = (e) => {
-      const line = typeof e.data === "string" ? e.data : "";
-      console.log("ENGINE:", line);
+  const line = typeof e.data === "string" ? e.data : "";
+  console.log("ENGINE:", line);
 
-      if (line.includes("bestmove")) {
+  if (!line) return;
+
+  if (line.startsWith("bestmove")) {
         const parts = line.trim().split(/\s+/);
         const move = parts[1];
 
