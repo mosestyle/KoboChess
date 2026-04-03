@@ -5,53 +5,44 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>KoboChess Kobo</title>
   <style>
-    :root{
-      --bg:#f4f4f4;
-      --fg:#111;
-      --light:#e8e8e8;
-      --dark:#bdbdbd;
-      --border:#222;
-    }
-    *{box-sizing:border-box}
     body{
       margin:0;
-      font-family:Arial,Helvetica,sans-serif;
-      background:var(--bg);
-      color:var(--fg);
-      display:flex;
-      justify-content:center;
       padding:12px;
+      font-family:Arial,Helvetica,sans-serif;
+      background:#f4f4f4;
+      color:#111;
     }
     .wrap{
-      width:min(100%,700px);
+      max-width:700px;
+      margin:0 auto;
     }
     h1{
-      margin:0 0 10px;
-      font-size:28px;
+      margin:0 0 10px 0;
       text-align:center;
+      font-size:28px;
     }
-    .topbar,.actions{
-      display:grid;
-      gap:8px;
-      margin-bottom:10px;
+    .row{
+      margin-bottom:8px;
+      overflow:hidden;
     }
-    .topbar{
-      grid-template-columns:1fr 1fr;
+    .half{
+      width:49%;
+      float:left;
     }
-    .actions{
-      grid-template-columns:1fr 1fr 1fr;
+    .half.right{
+      float:right;
     }
     button,select{
       width:100%;
       min-height:48px;
       font-size:18px;
-      border:2px solid var(--border);
+      border:2px solid #222;
       border-radius:8px;
       background:#fff;
       color:#000;
     }
     .status{
-      border:2px solid var(--border);
+      border:2px solid #222;
       background:#fff;
       border-radius:8px;
       padding:10px;
@@ -59,38 +50,42 @@
       font-size:18px;
       margin-bottom:10px;
     }
-    .board{
-      display:grid;
-      grid-template-columns:repeat(8,1fr);
-      border:3px solid var(--border);
+    #boardWrap{
       width:100%;
-      aspect-ratio:1/1;
+      border:3px solid #222;
       background:#000;
+      margin-bottom:10px;
     }
-    .sq{
-      border:none;
-      margin:0;
+    #boardTable{
+      width:100%;
+      border-collapse:collapse;
+      table-layout:fixed;
+    }
+    #boardTable td{
       padding:0;
-      font-size:min(7vw,38px);
+      margin:0;
+      text-align:center;
+      vertical-align:middle;
+      font-size:34px;
       line-height:1;
-      display:flex;
-      align-items:center;
-      justify-content:center;
-      user-select:none;
-      -webkit-user-select:none;
-      font-family:"Segoe UI Symbol","Noto Sans Symbols","Arial Unicode MS",serif;
+      font-family:"DejaVu Sans","Segoe UI Symbol","Noto Sans Symbols","Arial Unicode MS",serif;
+      border:none;
     }
-    .light{background:var(--light)}
-    .dark{background:var(--dark)}
+    .light{
+      background:#e8e8e8;
+    }
+    .dark{
+      background:#bdbdbd;
+    }
     .selected{
-      outline:4px solid #000;
-      outline-offset:-4px;
-    }
-    .hint{
-      box-shadow:inset 0 0 0 4px #444;
+      outline:3px solid #000;
+      outline-offset:-3px;
     }
     .legal{
-      box-shadow:inset 0 0 0 4px #777;
+      box-shadow:inset 0 0 0 3px #777;
+    }
+    .hint{
+      box-shadow:inset 0 0 0 3px #444;
     }
     .small{
       font-size:15px;
@@ -104,50 +99,70 @@
       text-align:center;
       opacity:.8;
     }
+    .clear{
+      clear:both;
+    }
   </style>
 </head>
 <body>
 <div class="wrap">
   <h1>KoboChess</h1>
 
-  <div class="topbar">
-    <select id="difficulty">
-      <option value="1">Difficulty 1</option>
-      <option value="2">Difficulty 2</option>
-      <option value="3">Difficulty 3</option>
-      <option value="4">Difficulty 4</option>
-      <option value="5" selected>Difficulty 5</option>
-      <option value="6">Difficulty 6</option>
-      <option value="7">Difficulty 7</option>
-      <option value="8">Difficulty 8</option>
-      <option value="9">Difficulty 9</option>
-    </select>
-    <select id="sideSelect">
-      <option value="w" selected>Play as White</option>
-      <option value="b">Play as Black</option>
-    </select>
+  <div class="row">
+    <div class="half">
+      <select id="difficulty">
+        <option value="1">Difficulty 1</option>
+        <option value="2">Difficulty 2</option>
+        <option value="3">Difficulty 3</option>
+        <option value="4">Difficulty 4</option>
+        <option value="5" selected>Difficulty 5</option>
+        <option value="6">Difficulty 6</option>
+        <option value="7">Difficulty 7</option>
+        <option value="8">Difficulty 8</option>
+        <option value="9">Difficulty 9</option>
+      </select>
+    </div>
+    <div class="half right">
+      <select id="sideSelect">
+        <option value="w" selected>Play as White</option>
+        <option value="b">Play as Black</option>
+      </select>
+    </div>
+    <div class="clear"></div>
   </div>
 
-  <div class="actions">
-    <button id="newGameBtn">New Game</button>
-    <button id="undoBtn">Undo</button>
+  <div class="row">
+    <div class="half">
+      <button id="newGameBtn">New Game</button>
+    </div>
+    <div class="half right">
+      <button id="undoBtn">Undo</button>
+    </div>
+    <div class="clear"></div>
+  </div>
+
+  <div class="row">
     <button id="hintBtn">Hint</button>
   </div>
 
-  <div id="status" class="status">Loading Kobo build...</div>
-  <div id="board" class="board"></div>
+  <div id="status" class="status">Loading Kobo table build...</div>
+
+  <div id="boardWrap">
+    <table id="boardTable"></table>
+  </div>
 
   <div class="small">
     Tap a piece, then tap where you want it to go. Promotion is auto-queen for now.<br>
     Your game auto-saves.
   </div>
-  <div class="footer">Kobo Clara BW build • kobo.html v1</div>
+  <div class="footer">Kobo Clara BW build • kobo.html v2</div>
 </div>
 
 <script src="lib/chess.min.js"></script>
 <script>
 (function () {
-  var boardEl = document.getElementById("board");
+  var boardTable = document.getElementById("boardTable");
+  var boardWrap = document.getElementById("boardWrap");
   var statusEl = document.getElementById("status");
   var undoBtn = document.getElementById("undoBtn");
   var hintBtn = document.getElementById("hintBtn");
@@ -180,12 +195,12 @@
       playerColor: playerColor,
       difficulty: difficultyEl.value
     };
-    localStorage.setItem("koboChessState_kobohtml", JSON.stringify(data));
+    localStorage.setItem("koboChessState_kobohtml_v2", JSON.stringify(data));
   }
 
   function loadState() {
     try {
-      var raw = localStorage.getItem("koboChessState_kobohtml");
+      var raw = localStorage.getItem("koboChessState_kobohtml_v2");
       if (!raw) return false;
 
       var data = JSON.parse(raw);
@@ -210,13 +225,8 @@
       updateStatus();
       return true;
     } catch (err) {
-      console.log(err);
       return false;
     }
-  }
-
-  function squareColor(fileIndex, rankIndex) {
-    return ((fileIndex + rankIndex) % 2 === 0) ? "light" : "dark";
   }
 
   function getOrderedRanks() {
@@ -234,27 +244,48 @@
     return PIECES[piece.color + piece.type] || "";
   }
 
+  function isLightSquare(fileIndex, rankIndex) {
+    return ((fileIndex + rankIndex) % 2 === 0);
+  }
+
+  function resizeBoardCells() {
+    var width = boardWrap.clientWidth;
+    var size = Math.floor(width / 8);
+    var cells = boardTable.getElementsByTagName("td");
+    for (var i = 0; i < cells.length; i++) {
+      cells[i].style.width = size + "px";
+      cells[i].style.height = size + "px";
+    }
+  }
+
   function renderBoard() {
-    boardEl.innerHTML = "";
+    var html = "";
     var files = getOrderedFiles();
     var ranks = getOrderedRanks();
 
     for (var r = 0; r < ranks.length; r++) {
+      html += "<tr>";
       for (var f = 0; f < files.length; f++) {
         var square = files[f] + ranks[r];
-        var btn = document.createElement("button");
-        btn.className = "sq " + squareColor(f, r);
+        var cls = isLightSquare(f, r) ? "light" : "dark";
 
-        if (selected === square) btn.className += " selected";
-        if (legalTargets.indexOf(square) !== -1) btn.className += " legal";
-        if (hintSquares.indexOf(square) !== -1) btn.className += " hint";
+        if (selected === square) cls += " selected";
+        if (legalTargets.indexOf(square) !== -1) cls += " legal";
+        if (hintSquares.indexOf(square) !== -1) cls += " hint";
 
-        btn.setAttribute("data-square", square);
-        btn.textContent = pieceAt(square);
-        btn.addEventListener("click", onSquareClick);
-        boardEl.appendChild(btn);
+        html += '<td class="' + cls + '" data-square="' + square + '">' + pieceAt(square) + '</td>';
       }
+      html += "</tr>";
     }
+
+    boardTable.innerHTML = html;
+
+    var cells = boardTable.getElementsByTagName("td");
+    for (var i = 0; i < cells.length; i++) {
+      cells[i].onclick = onSquareClick;
+    }
+
+    resizeBoardCells();
   }
 
   function updateStatus(extra) {
@@ -463,11 +494,11 @@
     }, 50);
   }
 
-  function onSquareClick(e) {
+  function onSquareClick() {
     if (botBusy) return;
     if (game.turn() !== playerColor) return;
 
-    var square = e.currentTarget.getAttribute("data-square");
+    var square = this.getAttribute("data-square");
     hintSquares = [];
 
     if (!selected) {
@@ -549,7 +580,7 @@
     }
   }
 
-  undoBtn.addEventListener("click", function () {
+  undoBtn.onclick = function () {
     if (botBusy) return;
 
     var moveCount = game.history().length;
@@ -566,20 +597,24 @@
     renderBoard();
     updateStatus();
     saveState();
-  });
+  };
 
-  hintBtn.addEventListener("click", function () {
+  hintBtn.onclick = function () {
     selected = null;
     legalTargets = [];
     renderBoard();
     requestHint();
-  });
+  };
 
-  newGameBtn.addEventListener("click", startGame);
-  sideSelectEl.addEventListener("change", startGame);
+  newGameBtn.onclick = startGame;
+  sideSelectEl.onchange = startGame;
+
+  window.onresize = resizeBoardCells;
 
   if (!loadState()) {
     startGame();
+  } else {
+    resizeBoardCells();
   }
 })();
 </script>
