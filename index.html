@@ -1,0 +1,426 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>KoboChess</title>
+  <style>
+    :root{
+      --bg:#f4f4f4;
+      --fg:#111;
+      --light:#e8e8e8;
+      --dark:#bdbdbd;
+      --border:#222;
+      --accent:#000;
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0;
+      font-family:Arial,Helvetica,sans-serif;
+      background:var(--bg);
+      color:var(--fg);
+      display:flex;
+      justify-content:center;
+      padding:12px;
+    }
+    .wrap{
+      width:min(100%,700px);
+    }
+    h1{
+      margin:0 0 10px;
+      font-size:28px;
+      text-align:center;
+    }
+    .topbar,.actions{
+      display:grid;
+      grid-template-columns:1fr 1fr;
+      gap:8px;
+      margin-bottom:10px;
+    }
+    .actions{
+      grid-template-columns:1fr 1fr 1fr;
+    }
+    button,select{
+      width:100%;
+      min-height:48px;
+      font-size:18px;
+      border:2px solid var(--border);
+      border-radius:8px;
+      background:#fff;
+      color:#000;
+    }
+    .status{
+      border:2px solid var(--border);
+      background:#fff;
+      border-radius:8px;
+      padding:10px;
+      min-height:54px;
+      font-size:18px;
+      margin-bottom:10px;
+    }
+    .board{
+      display:grid;
+      grid-template-columns:repeat(8,1fr);
+      border:3px solid var(--border);
+      width:100%;
+      aspect-ratio:1/1;
+      background:#000;
+    }
+    .sq{
+      border:none;
+      margin:0;
+      padding:0;
+      font-size:min(7vw,42px);
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      user-select:none;
+      -webkit-user-select:none;
+    }
+    .light{background:var(--light)}
+    .dark{background:var(--dark)}
+    .selected{
+      outline:4px solid #000;
+      outline-offset:-4px;
+    }
+    .hint{
+      box-shadow:inset 0 0 0 4px #444;
+    }
+    .legal{
+      box-shadow:inset 0 0 0 4px #777;
+    }
+    .small{
+      font-size:15px;
+      line-height:1.35;
+      margin-top:10px;
+      opacity:.85;
+    }
+    .footer{
+      margin-top:10px;
+      font-size:14px;
+      text-align:center;
+      opacity:.8;
+    }
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <h1>KoboChess</h1>
+
+  <div class="topbar">
+    <select id="difficulty">
+      <option value="1">Difficulty 1</option>
+      <option value="2">Difficulty 2</option>
+      <option value="3">Difficulty 3</option>
+      <option value="4">Difficulty 4</option>
+      <option value="5" selected>Difficulty 5</option>
+      <option value="6">Difficulty 6</option>
+      <option value="7">Difficulty 7</option>
+      <option value="8">Difficulty 8</option>
+      <option value="9">Difficulty 9</option>
+    </select>
+    <button id="newGameBtn">New Game</button>
+  </div>
+
+  <div class="actions">
+    <button id="undoBtn">Undo</button>
+    <button id="hintBtn">Hint</button>
+    <button id="flipBtn">Flip</button>
+  </div>
+
+  <div id="status" class="status">Loading…</div>
+  <div id="board" class="board"></div>
+
+  <div class="small">
+    Tap a piece, then tap where you want it to go. Promotion is auto-queen for now.
+  </div>
+  <div class="footer">Kobo Clara BW test version</div>
+</div>
+
+<script type="module">
+  import { Chess } from "https://esm.sh/chess.js@1.4.0";
+
+  const boardEl = document.getElementById("board");
+  const statusEl = document.getElementById("status");
+  const undoBtn = document.getElementById("undoBtn");
+  const hintBtn = document.getElementById("hintBtn");
+  const newGameBtn = document.getElementById("newGameBtn");
+  const flipBtn = document.getElementById("flipBtn");
+  const difficultyEl = document.getElementById("difficulty");
+
+  const PIECES = {
+    wp:"♙", wn:"♘", wb:"♗", wr:"♖", wq:"♕", wk:"♔",
+    bp:"♟", bn:"♞", bb:"♝", br:"♜", bq:"♛", bk:"♚"
+  };
+
+  const FILES = ["a","b","c","d","e","f","g","h"];
+  let flipped = false;
+  let game = new Chess();
+  let selected = null;
+  let legalTargets = [];
+  let hintSquares = [];
+  let engineBusy = false;
+  let pendingMode = null; // "move" or "hint"
+
+  let engine = null;
+  try {
+    engine = new Worker("https://cdn.jsdelivr.net/npm/stockfish.wasm@0.10.0/stockfish.worker.js");
+  } catch (e) {
+    console.error(e);
+  }
+
+  if (engine) {
+    engine.onmessage = (e) => {
+      const line = typeof e.data === "string" ? e.data : "";
+      console.log("ENGINE:", line);
+
+      if (line.includes("bestmove")) {
+        const parts = line.trim().split(/\s+/);
+        const move = parts[1];
+
+        if (!move || move === "(none)") {
+          engineBusy = false;
+          pendingMode = null;
+          updateStatus();
+          return;
+        }
+
+        const from = move.slice(0,2);
+        const to = move.slice(2,4);
+
+        if (pendingMode === "hint") {
+          hintSquares = [from, to];
+          engineBusy = false;
+          pendingMode = null;
+          renderBoard();
+          updateStatus("Hint: " + from + " → " + to);
+          return;
+        }
+
+        if (pendingMode === "move") {
+          game.move({ from, to, promotion: "q" });
+          engineBusy = false;
+          pendingMode = null;
+          hintSquares = [];
+          renderBoard();
+          updateStatus();
+        }
+      }
+    };
+
+    engine.postMessage("uci");
+    engine.postMessage("isready");
+    engine.postMessage("ucinewgame");
+  }
+
+  function difficultyMap(level) {
+    const map = {
+      1:{skill:0,time:80},
+      2:{skill:2,time:120},
+      3:{skill:4,time:180},
+      4:{skill:6,time:250},
+      5:{skill:8,time:350},
+      6:{skill:10,time:500},
+      7:{skill:12,time:700},
+      8:{skill:15,time:1000},
+      9:{skill:18,time:1500}
+    };
+    return map[level] || map[5];
+  }
+
+  function squareColor(fileIndex, rankIndex) {
+    return (fileIndex + rankIndex) % 2 === 0 ? "light" : "dark";
+  }
+
+  function getOrderedRanks() {
+    return flipped ? [1,2,3,4,5,6,7,8] : [8,7,6,5,4,3,2,1];
+  }
+
+  function getOrderedFiles() {
+    return flipped ? [...FILES].reverse() : FILES;
+  }
+
+  function pieceAt(square) {
+    const piece = game.get(square);
+    if (!piece) return "";
+    return PIECES[piece.color + piece.type] || "";
+  }
+
+  function renderBoard() {
+    boardEl.innerHTML = "";
+    const files = getOrderedFiles();
+    const ranks = getOrderedRanks();
+
+    for (let r = 0; r < ranks.length; r++) {
+      for (let f = 0; f < files.length; f++) {
+        const square = files[f] + ranks[r];
+        const btn = document.createElement("button");
+        btn.className = "sq " + squareColor(f, r);
+        if (selected === square) btn.classList.add("selected");
+        if (legalTargets.includes(square)) btn.classList.add("legal");
+        if (hintSquares.includes(square)) btn.classList.add("hint");
+        btn.dataset.square = square;
+        btn.textContent = pieceAt(square);
+        btn.addEventListener("click", onSquareClick);
+        boardEl.appendChild(btn);
+      }
+    }
+  }
+
+  function onSquareClick(e) {
+    if (engineBusy) return;
+
+    const square = e.currentTarget.dataset.square;
+    hintSquares = [];
+
+    if (!selected) {
+      const piece = game.get(square);
+      if (!piece) return;
+      if (piece.color !== game.turn()) return;
+
+      selected = square;
+      legalTargets = game.moves({ square, verbose: true }).map(m => m.to);
+      renderBoard();
+      updateStatus("Selected " + square);
+      return;
+    }
+
+    if (selected === square) {
+      selected = null;
+      legalTargets = [];
+      renderBoard();
+      updateStatus();
+      return;
+    }
+
+    const move = game.move({
+      from: selected,
+      to: square,
+      promotion: "q"
+    });
+
+    if (!move) {
+      const piece = game.get(square);
+      if (piece && piece.color === game.turn()) {
+        selected = square;
+        legalTargets = game.moves({ square, verbose: true }).map(m => m.to);
+        renderBoard();
+        updateStatus("Selected " + square);
+      } else {
+        selected = null;
+        legalTargets = [];
+        renderBoard();
+        updateStatus("Illegal move");
+      }
+      return;
+    }
+
+    selected = null;
+    legalTargets = [];
+    renderBoard();
+    updateStatus();
+
+    if (!game.isGameOver()) {
+      requestEngineMove();
+    }
+  }
+
+  function requestEngineMove() {
+    if (!engine) {
+      updateStatus("Engine failed to load.");
+      return;
+    }
+    engineBusy = true;
+    pendingMode = "move";
+    const level = Number(difficultyEl.value);
+    const cfg = difficultyMap(level);
+
+    engine.postMessage("setoption name Skill Level value " + cfg.skill);
+    engine.postMessage("position fen " + game.fen());
+    engine.postMessage("go movetime " + cfg.time);
+    updateStatus("Bot is thinking…");
+  }
+
+  function requestHint() {
+    if (engineBusy || game.isGameOver()) return;
+    if (!engine) {
+      updateStatus("Engine failed to load.");
+      return;
+    }
+
+    engineBusy = true;
+    pendingMode = "hint";
+
+    engine.postMessage("setoption name Skill Level value 20");
+    engine.postMessage("position fen " + game.fen());
+    engine.postMessage("go movetime 400");
+    updateStatus("Finding best move…");
+  }
+
+  function updateStatus(extra = "") {
+    if (extra) {
+      statusEl.textContent = extra;
+      return;
+    }
+
+    if (game.isCheckmate()) {
+      statusEl.textContent = "Checkmate. " + (game.turn() === "w" ? "Black" : "White") + " wins.";
+      return;
+    }
+    if (game.isDraw()) {
+      statusEl.textContent = "Draw.";
+      return;
+    }
+    if (game.inCheck()) {
+      statusEl.textContent = (game.turn() === "w" ? "White" : "Black") + " to move. Check.";
+      return;
+    }
+    statusEl.textContent = (game.turn() === "w" ? "White" : "Black") + " to move.";
+  }
+
+  undoBtn.addEventListener("click", () => {
+    if (engineBusy) return;
+
+    if (game.history().length >= 2) {
+      game.undo();
+      game.undo();
+    } else if (game.history().length === 1) {
+      game.undo();
+    }
+
+    selected = null;
+    legalTargets = [];
+    hintSquares = [];
+    renderBoard();
+    updateStatus();
+  });
+
+  hintBtn.addEventListener("click", () => {
+    selected = null;
+    legalTargets = [];
+    renderBoard();
+    requestHint();
+  });
+
+  newGameBtn.addEventListener("click", () => {
+    game = new Chess();
+    selected = null;
+    legalTargets = [];
+    hintSquares = [];
+    engineBusy = false;
+    pendingMode = null;
+    if (engine) engine.postMessage("ucinewgame");
+    renderBoard();
+    updateStatus();
+  });
+
+  flipBtn.addEventListener("click", () => {
+    flipped = !flipped;
+    renderBoard();
+  });
+
+  renderBoard();
+  updateStatus();
+</script>
+</body>
+</html>
