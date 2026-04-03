@@ -136,7 +136,8 @@
   <div id="board" class="board"></div>
 
   <div class="small">
-    Tap a piece, then tap where you want it to go. Promotion is auto-queen for now.
+    Tap a piece, then tap where you want it to go. Promotion is auto-queen for now.<br>
+    Your game auto-saves.
   </div>
   <div class="footer">Kobo Clara BW test version</div>
 </div>
@@ -166,7 +167,7 @@
   let flipped = false;
   let playerColor = "w";
   let engineBusy = false;
-  let pendingMode = null; // "move" | "hint"
+  let pendingMode = null;
 
   let engine = null;
   try {
@@ -177,12 +178,12 @@
 
   if (engine) {
     engine.onmessage = (e) => {
-  const line = typeof e.data === "string" ? e.data : "";
-  console.log("ENGINE:", line);
+      const line = typeof e.data === "string" ? e.data : "";
+      console.log("ENGINE:", line);
 
-  if (!line) return;
+      if (!line) return;
 
-  if (line.startsWith("bestmove")) {
+      if (line.startsWith("bestmove")) {
         const parts = line.trim().split(/\s+/);
         const move = parts[1];
 
@@ -212,6 +213,7 @@
           hintSquares = [];
           renderBoard();
           updateStatus();
+          saveState();
         }
       }
     };
@@ -238,6 +240,47 @@
 
   function botColor() {
     return playerColor === "w" ? "b" : "w";
+  }
+
+  function saveState() {
+    const data = {
+      moves: game.history(),
+      playerColor,
+      difficulty: difficultyEl.value
+    };
+    localStorage.setItem("koboChessState", JSON.stringify(data));
+  }
+
+  function loadState() {
+    try {
+      const raw = localStorage.getItem("koboChessState");
+      if (!raw) return false;
+
+      const data = JSON.parse(raw);
+
+      playerColor = data.playerColor || "w";
+      sideSelectEl.value = playerColor;
+      difficultyEl.value = data.difficulty || "5";
+
+      game = new Chess();
+      for (const move of (data.moves || [])) {
+        game.move(move);
+      }
+
+      selected = null;
+      legalTargets = [];
+      hintSquares = [];
+      engineBusy = false;
+      pendingMode = null;
+      flipped = playerColor === "b";
+
+      renderBoard();
+      updateStatus();
+      return true;
+    } catch (err) {
+      console.error(err);
+      return false;
+    }
   }
 
   function squareColor(fileIndex, rankIndex) {
@@ -332,6 +375,7 @@
     legalTargets = [];
     renderBoard();
     updateStatus();
+    saveState();
 
     if (!game.isGameOver() && game.turn() === botColor()) {
       requestEngineMove();
@@ -343,6 +387,7 @@
       updateStatus("Engine failed to load.");
       return;
     }
+
     engineBusy = true;
     pendingMode = "move";
     const level = Number(difficultyEl.value);
@@ -351,7 +396,7 @@
     engine.postMessage("setoption name Skill Level value " + cfg.skill);
     engine.postMessage("position fen " + game.fen());
     engine.postMessage("go movetime " + cfg.time);
-    updateStatus("Bot is thinking…");
+    updateStatus("Bot is thinking...");
   }
 
   function requestHint() {
@@ -367,7 +412,7 @@
     engine.postMessage("setoption name Skill Level value 20");
     engine.postMessage("position fen " + game.fen());
     engine.postMessage("go movetime 400");
-    updateStatus("Finding best move…");
+    updateStatus("Finding best move...");
   }
 
   function updateStatus(extra = "") {
@@ -388,7 +433,7 @@
     }
 
     if (engineBusy && pendingMode === "move") {
-      statusEl.textContent = "Bot is thinking…";
+      statusEl.textContent = "Bot is thinking...";
       return;
     }
 
@@ -413,6 +458,7 @@
 
     renderBoard();
     updateStatus();
+    saveState();
 
     if (playerColor === "b") {
       requestEngineMove();
@@ -435,6 +481,7 @@
     hintSquares = [];
     renderBoard();
     updateStatus();
+    saveState();
   });
 
   hintBtn.addEventListener("click", () => {
@@ -445,11 +492,11 @@
   });
 
   newGameBtn.addEventListener("click", startGame);
-
   sideSelectEl.addEventListener("change", startGame);
 
-  renderBoard();
-  updateStatus();
+  if (!loadState()) {
+    startGame();
+  }
 </script>
 </body>
 </html>
